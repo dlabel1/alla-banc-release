@@ -1,29 +1,12 @@
 #!/bin/bash
-# =============================================================================
-# bootstrap.sh — Installation initiale de CIM_Banc pour le client
-#
-# Ce script est pré-installé sur le Pi par le développeur avant livraison.
-# Le client double-clique sur "Installer ALLA Banc" sur le bureau.
-#
-# Ce script :
-#   1. Vérifie la connexion internet
-#   2. Télécharge la dernière version depuis GitHub
-#   3. Extrait et exécute reset_pi5.sh (inclus dans l'archive)
-# =============================================================================
-
 export DISPLAY="${DISPLAY:-:0}"
 
 LATEST_JSON_URL="https://raw.githubusercontent.com/dlabel1/alla-banc-release/main/latest.json"
-
-# =============================================================================
-# Helpers
-# =============================================================================
 
 DONE_STEPS=""
 CURRENT_STEP=""
 
 step() {
-    # Marque l'étape précédente comme OK et affiche la nouvelle
     if [ -n "$CURRENT_STEP" ]; then
         if [ -n "$DONE_STEPS" ]; then
             DONE_STEPS="${DONE_STEPS}\n${CURRENT_STEP}  OK"
@@ -43,10 +26,7 @@ error_exit() {
     kill "$ZENITY_PID" 2>/dev/null
     exec 3>&- 2>/dev/null
     rm -f "$PIPE" "$TMP_JSON" 2>/dev/null
-    zenity --error \
-        --title="Erreur d'installation" \
-        --text="$1" \
-        --width=400 2>/dev/null
+    zenity --error --title="Erreur d'installation" --text="$1" --width=400 2>/dev/null
     exit 1
 }
 
@@ -55,10 +35,6 @@ PIPE=""
 TMP_JSON=""
 TMP_TAR=""
 
-# =============================================================================
-# Bienvenue
-# =============================================================================
-
 zenity --question \
     --title="ALLA Banc — Installation" \
     --text="Bienvenue !\n\nL'application ALLA Banc va être téléchargée et installée automatiquement.\n\nAssurez-vous que le Raspberry Pi est connecté à internet.\n\nCommencer l'installation ?" \
@@ -66,21 +42,13 @@ zenity --question \
     --cancel-label="Annuler" \
     --width=400 2>/dev/null || exit 0
 
-# =============================================================================
-# Vérification internet
-# =============================================================================
-
 if ! curl -sf --max-time 10 "https://github.com" > /dev/null 2>&1; then
     zenity --error \
         --title="Pas de connexion internet" \
-        --text="Impossible de contacter le serveur.\n\nConnectez le Raspberry Pi au réseau (Wi-Fi ou câble) et réessayez." \
+        --text="Impossible de contacter le serveur.\n\nConnectez le Raspberry Pi au réseau et réessayez." \
         --width=400 2>/dev/null
     exit 1
 fi
-
-# =============================================================================
-# Fenêtre de progression (pipe nommé = pas de bouton OK)
-# =============================================================================
 
 PIPE=$(mktemp -u /tmp/cim_bootstrap_pipe_XXXXXX)
 mkfifo "$PIPE"
@@ -92,10 +60,6 @@ zenity --progress \
     --width=400 < "$PIPE" &
 ZENITY_PID=$!
 exec 3>"$PIPE"
-
-# =============================================================================
-# Téléchargement de latest.json
-# =============================================================================
 
 step "Connexion au serveur..."
 
@@ -110,20 +74,12 @@ SHA256=$(python3   -c "import json,sys; d=json.load(open('$TMP_JSON')); print(d[
 
 [[ -z "$VERSION" || -z "$TAR_URL" ]] && error_exit "Réponse serveur invalide. Réessayez plus tard."
 
-# =============================================================================
-# Téléchargement de l'archive
-# =============================================================================
-
 step "Téléchargement v${VERSION}..."
 
 TMP_TAR="/tmp/CIM_Banc_${VERSION}.tar.gz"
 if ! curl -L --max-time 300 "$TAR_URL" -o "$TMP_TAR" 2>/dev/null; then
     error_exit "Échec du téléchargement.\n\nVérifiez votre connexion internet et réessayez."
 fi
-
-# =============================================================================
-# Vérification SHA256
-# =============================================================================
 
 step "Vérification de l'intégrité..."
 
@@ -133,10 +89,6 @@ if [[ "$ACTUAL_SHA" != "$SHA256" ]]; then
     error_exit "Le fichier téléchargé est corrompu.\n\nRelancez l'installation."
 fi
 
-# =============================================================================
-# Extraction de reset_pi5.sh depuis l'archive
-# =============================================================================
-
 step "Préparation de l'installation..."
 
 if ! tar xzf "$TMP_TAR" -C /tmp CIM_Banc/reset_pi5.sh --strip-components=1 2>/dev/null; then
@@ -144,20 +96,12 @@ if ! tar xzf "$TMP_TAR" -C /tmp CIM_Banc/reset_pi5.sh --strip-components=1 2>/de
 fi
 chmod +x /tmp/reset_pi5.sh
 
-# =============================================================================
-# Installation (non-interactive)
-# =============================================================================
-
 step "Installation en cours..."
 
 if ! sudo bash /tmp/reset_pi5.sh "$TMP_TAR" --yes 2>/tmp/cim_install_error.log; then
     INSTALL_LOG=$(tail -5 /tmp/cim_install_error.log 2>/dev/null)
     error_exit "L'installation a échoué.\n\n$INSTALL_LOG"
 fi
-
-# =============================================================================
-# Nettoyage et succès
-# =============================================================================
 
 kill "$ZENITY_PID" 2>/dev/null
 exec 3>&-
